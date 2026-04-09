@@ -50,6 +50,29 @@ export interface PaymentRecord {
   created_at: string;
 }
 
+export interface ActivityLog {
+  id: string;
+  pipeline_id?: string;
+  client_name: string;
+  action: string;
+  detail?: string;
+  created_at: string;
+}
+
+export const ACTION_LABELS: Record<string, string> = {
+  created: "新規登録",
+  won: "受注",
+  lost: "失注",
+  handed_over: "引き継ぎ",
+  onboarding: "設定開始",
+  active: "受講開始",
+  deleted: "削除",
+  chatwork_connected: "Chatwork接続",
+  membership_invited: "会員招待",
+  utage_issued: "Utage発行",
+  updated: "更新",
+};
+
 // カンバンボードのカラム定義
 export const KANBAN_COLUMNS: {
   id: PipelineStatus;

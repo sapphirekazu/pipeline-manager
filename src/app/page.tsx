@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { KanbanBoard } from "@/components/kanban-board";
 import { ClientDetailSheet } from "@/components/client-detail-sheet";
 import { AddClientDialog } from "@/components/add-client-dialog";
+import { ActivityLogPanel } from "@/components/activity-log-panel";
 import { usePipelineStore } from "@/lib/store";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
@@ -71,6 +72,9 @@ export default function Home() {
 
         {/* カンバンボード */}
         <KanbanBoard />
+
+        {/* 操作ログ */}
+        <ActivityLogPanel />
       </div>
 
       {/* 顧客詳細シート */}

@@ -4,6 +4,7 @@ import {
   SalesPipeline,
   PipelineStatus,
   PaymentType,
+  ActivityLog,
 } from "@/types/pipeline";
 
 function db() {
@@ -14,6 +15,40 @@ function db() {
 
 export function isSupabaseConfigured(): boolean {
   return getSupabase() !== null;
+}
+
+// ============================================
+// 操作ログ記録
+// ============================================
+export async function addLog(
+  clientName: string,
+  action: string,
+  pipelineId?: string,
+  detail?: string
+) {
+  const { error } = await db()
+    .from("activity_logs")
+    .insert({
+      pipeline_id: pipelineId ?? null,
+      client_name: clientName,
+      action,
+      detail,
+    });
+  if (error) console.error("Log error:", error);
+}
+
+// ============================================
+// 操作ログ取得（直近50件）
+// ============================================
+export async function fetchActivityLogs(): Promise<ActivityLog[]> {
+  const { data, error } = await db()
+    .from("activity_logs")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (error) throw error;
+  return (data ?? []) as ActivityLog[];
 }
 
 // ============================================
@@ -57,6 +92,8 @@ export async function createClientWithPipeline(input: {
 
   if (pipelineErr || !pipeline) throw pipelineErr ?? new Error("Pipeline creation failed");
 
+  await addLog(input.name, "created", pipeline.id, `メール: ${input.email}`);
+
   return { client: client as Client, pipeline: pipeline as SalesPipeline };
 }
 
@@ -65,6 +102,7 @@ export async function createClientWithPipeline(input: {
 // ============================================
 export async function setDealResult(
   pipelineId: string,
+  clientName: string,
   result: "won" | "lost",
   paymentInfo?: {
     payment_type: PaymentType;
@@ -78,6 +116,7 @@ export async function setDealResult(
       .update({ status: "lost" })
       .eq("id", pipelineId);
     if (error) throw error;
+    await addLog(clientName, "lost", pipelineId);
     return;
   }
 
@@ -97,6 +136,7 @@ export async function setDealResult(
     .eq("id", pipelineId);
 
   if (error) throw error;
+  await addLog(clientName, "won", pipelineId, `総額: ¥${total.toLocaleString()} / 支払済: ¥${paid.toLocaleString()}`);
 }
 
 // ============================================
@@ -104,6 +144,7 @@ export async function setDealResult(
 // ============================================
 export async function updatePipelineFields(
   pipelineId: string,
+  clientName: string,
   updates: Partial<SalesPipeline>
 ) {
   const { error } = await db()
@@ -112,20 +153,34 @@ export async function updatePipelineFields(
     .eq("id", pipelineId);
 
   if (error) throw error;
+
+  // チェックリスト操作をログ記録
+  if (updates.is_chatwork_connected === true) {
+    await addLog(clientName, "chatwork_connected", pipelineId);
+  }
+  if (updates.is_membership_invited === true) {
+    await addLog(clientName, "membership_invited", pipelineId);
+  }
+  if (updates.is_utage_account_issued === true) {
+    await addLog(clientName, "utage_issued", pipelineId);
+  }
+  if (updates.status && !updates.is_membership_invited && !updates.is_chatwork_connected && !updates.is_utage_account_issued) {
+    await addLog(clientName, updates.status, pipelineId);
+  }
 }
 
 // ============================================
 // パイプライン + クライアント削除
 // ============================================
-export async function deletePipeline(pipelineId: string, clientId: string) {
-  // パイプライン削除（CASCADE でpayment_recordsも消える）
+export async function deletePipeline(pipelineId: string, clientId: string, clientName: string) {
+  await addLog(clientName, "deleted", pipelineId);
+
   const { error: pErr } = await db()
     .from("sales_pipelines")
     .delete()
     .eq("id", pipelineId);
   if (pErr) throw pErr;
 
-  // クライアント削除
   const { error: cErr } = await db()
     .from("clients")
     .delete()
@@ -138,6 +193,7 @@ export async function deletePipeline(pipelineId: string, clientId: string) {
 // ============================================
 export async function advanceStatus(
   pipelineId: string,
+  clientName: string,
   newStatus: PipelineStatus,
   timestampField?: string
 ) {
@@ -152,4 +208,5 @@ export async function advanceStatus(
     .eq("id", pipelineId);
 
   if (error) throw error;
+  await addLog(clientName, newStatus, pipelineId);
 }

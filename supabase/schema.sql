@@ -86,11 +86,38 @@ CREATE TABLE payment_records (
 );
 
 -- ============================================
+-- 操作ログテーブル
+-- ============================================
+CREATE TABLE activity_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  pipeline_id UUID REFERENCES sales_pipelines(id) ON DELETE SET NULL,
+  client_name TEXT NOT NULL,           -- 削除後も名前を残すため
+  action TEXT NOT NULL,                -- 操作内容（created, won, lost, deleted, etc.）
+  detail TEXT,                         -- 詳細メモ
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ============================================
+-- RLS（Row Level Security）ポリシー - 全テーブル公開読み書き
+-- ============================================
+ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sales_pipelines ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payment_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow all on clients" ON clients FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on sales_pipelines" ON sales_pipelines FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on payment_records" ON payment_records FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on activity_logs" ON activity_logs FOR ALL USING (true) WITH CHECK (true);
+
+-- ============================================
 -- インデックス
 -- ============================================
 CREATE INDEX idx_pipelines_status ON sales_pipelines(status);
 CREATE INDEX idx_pipelines_client ON sales_pipelines(client_id);
 CREATE INDEX idx_payment_records_pipeline ON payment_records(pipeline_id);
+CREATE INDEX idx_activity_logs_pipeline ON activity_logs(pipeline_id);
+CREATE INDEX idx_activity_logs_created ON activity_logs(created_at DESC);
 
 -- ============================================
 -- updated_at 自動更新トリガー

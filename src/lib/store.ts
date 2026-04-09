@@ -4,6 +4,7 @@ import {
   SalesPipeline,
   PipelineStatus,
   PaymentType,
+  ActivityLog,
 } from "@/types/pipeline";
 import { mockClients, mockPipelines } from "@/lib/mock-data";
 import * as api from "@/lib/api";
@@ -11,14 +12,12 @@ import * as api from "@/lib/api";
 interface PipelineStore {
   clients: Client[];
   pipelines: SalesPipeline[];
+  activityLogs: ActivityLog[];
   selectedPipelineId: string | null;
   loading: boolean;
   error: string | null;
 
-  // データ取得
   fetchData: () => Promise<void>;
-
-  // アクション
   selectPipeline: (id: string | null) => void;
   addClient: (data: {
     name: string;
@@ -44,9 +43,17 @@ interface PipelineStore {
   deletePipeline: (id: string) => Promise<void>;
 }
 
+function getClientName(state: PipelineStore, pipelineId: string): string {
+  const pipeline = state.pipelines.find((p) => p.id === pipelineId);
+  if (!pipeline) return "不明";
+  const client = state.clients.find((c) => c.id === pipeline.client_id);
+  return client?.name ?? "不明";
+}
+
 export const usePipelineStore = create<PipelineStore>((set, get) => ({
   clients: api.isSupabaseConfigured() ? [] : mockClients,
   pipelines: api.isSupabaseConfigured() ? [] : mockPipelines,
+  activityLogs: [],
   selectedPipelineId: null,
   loading: false,
   error: null,
@@ -55,12 +62,15 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
     if (!api.isSupabaseConfigured()) return;
     set({ loading: true, error: null });
     try {
-      const data = await api.fetchPipelinesWithClients();
+      const [data, logs] = await Promise.all([
+        api.fetchPipelinesWithClients(),
+        api.fetchActivityLogs(),
+      ]);
       const clients = data.map((d) => d.client);
       const uniqueClients = Array.from(
         new Map(clients.map((c) => [c.id, c])).values()
       );
-      set({ pipelines: data, clients: uniqueClients, loading: false });
+      set({ pipelines: data, clients: uniqueClients, activityLogs: logs, loading: false });
     } catch (e) {
       set({ error: (e as Error).message, loading: false });
     }
@@ -70,32 +80,20 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
 
   addClient: async (data) => {
     if (!api.isSupabaseConfigured()) {
-      // モックモード
       const clientId = `c${Date.now()}`;
       const pipelineId = `p${Date.now()}`;
       const now = new Date().toISOString();
-      const newClient: Client = {
-        id: clientId,
-        ...data,
-        created_at: now,
-        updated_at: now,
-      };
+      const newClient: Client = { id: clientId, ...data, created_at: now, updated_at: now };
       const newPipeline: SalesPipeline = {
-        id: pipelineId,
-        client_id: clientId,
-        status: "lead",
-        total_amount: 0,
-        paid_amount: 0,
-        remaining_amount: 0,
-        is_chatwork_connected: false,
-        is_membership_invited: false,
-        is_utage_account_issued: false,
-        created_at: now,
-        updated_at: now,
+        id: pipelineId, client_id: clientId, status: "lead",
+        total_amount: 0, paid_amount: 0, remaining_amount: 0,
+        is_chatwork_connected: false, is_membership_invited: false, is_utage_account_issued: false,
+        created_at: now, updated_at: now,
       };
       set((state) => ({
         clients: [...state.clients, newClient],
         pipelines: [...state.pipelines, newPipeline],
+        activityLogs: [{ id: `l${Date.now()}`, client_name: data.name, action: "created", created_at: now }, ...state.activityLogs],
       }));
       return;
     }
@@ -106,58 +104,54 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
         clients: [...state.clients, client],
         pipelines: [...state.pipelines, { ...pipeline, client }],
       }));
+      get().fetchData(); // ログも含めて再取得
     } catch (e) {
       set({ error: (e as Error).message });
     }
   },
 
   updatePipelineField: async (id, updates) => {
-    // 楽観的更新
+    const clientName = getClientName(get(), id);
     set((state) => ({
       pipelines: state.pipelines.map((p) =>
-        p.id === id
-          ? { ...p, ...updates, updated_at: new Date().toISOString() }
-          : p
+        p.id === id ? { ...p, ...updates, updated_at: new Date().toISOString() } : p
       ),
     }));
 
     if (api.isSupabaseConfigured()) {
       try {
-        await api.updatePipelineFields(id, updates);
+        await api.updatePipelineFields(id, clientName, updates);
+        get().fetchData();
       } catch (e) {
         set({ error: (e as Error).message });
-        get().fetchData(); // ロールバック
+        get().fetchData();
       }
     }
   },
 
   setDealResult: async (id, result, paymentInfo) => {
+    const clientName = getClientName(get(), id);
     const now = new Date().toISOString();
 
-    // 楽観的更新
     set((state) => ({
       pipelines: state.pipelines.map((p) => {
         if (p.id !== id) return p;
-        if (result === "lost") {
-          return { ...p, status: "lost" as const, updated_at: now };
-        }
+        if (result === "lost") return { ...p, status: "lost" as const, updated_at: now };
         return {
-          ...p,
-          status: "won" as const,
+          ...p, status: "won" as const,
           payment_type: paymentInfo?.payment_type,
           total_amount: paymentInfo?.total_amount ?? 0,
           paid_amount: paymentInfo?.paid_amount ?? 0,
-          remaining_amount:
-            (paymentInfo?.total_amount ?? 0) - (paymentInfo?.paid_amount ?? 0),
-          won_at: now,
-          updated_at: now,
+          remaining_amount: (paymentInfo?.total_amount ?? 0) - (paymentInfo?.paid_amount ?? 0),
+          won_at: now, updated_at: now,
         };
       }),
     }));
 
     if (api.isSupabaseConfigured()) {
       try {
-        await api.setDealResult(id, result, paymentInfo);
+        await api.setDealResult(id, clientName, result, paymentInfo);
+        get().fetchData();
       } catch (e) {
         set({ error: (e as Error).message });
         get().fetchData();
@@ -166,23 +160,18 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
   },
 
   advanceToHandedOver: async (id) => {
+    const clientName = getClientName(get(), id);
     const now = new Date().toISOString();
     set((state) => ({
       pipelines: state.pipelines.map((p) =>
-        p.id === id
-          ? {
-              ...p,
-              status: "handed_over" as const,
-              handed_over_at: now,
-              updated_at: now,
-            }
-          : p
+        p.id === id ? { ...p, status: "handed_over" as const, handed_over_at: now, updated_at: now } : p
       ),
     }));
 
     if (api.isSupabaseConfigured()) {
       try {
-        await api.advanceStatus(id, "handed_over", "handed_over_at");
+        await api.advanceStatus(id, clientName, "handed_over", "handed_over_at");
+        get().fetchData();
       } catch (e) {
         set({ error: (e as Error).message });
         get().fetchData();
@@ -191,23 +180,18 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
   },
 
   advanceToActive: async (id) => {
+    const clientName = getClientName(get(), id);
     const now = new Date().toISOString();
     set((state) => ({
       pipelines: state.pipelines.map((p) =>
-        p.id === id
-          ? {
-              ...p,
-              status: "active" as const,
-              activated_at: now,
-              updated_at: now,
-            }
-          : p
+        p.id === id ? { ...p, status: "active" as const, activated_at: now, updated_at: now } : p
       ),
     }));
 
     if (api.isSupabaseConfigured()) {
       try {
-        await api.advanceStatus(id, "active", "activated_at");
+        await api.advanceStatus(id, clientName, "active", "activated_at");
+        get().fetchData();
       } catch (e) {
         set({ error: (e as Error).message });
         get().fetchData();
@@ -218,16 +202,19 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
   deletePipeline: async (id) => {
     const pipeline = get().pipelines.find((p) => p.id === id);
     if (!pipeline) return;
+    const clientName = getClientName(get(), id);
 
     set((state) => ({
       pipelines: state.pipelines.filter((p) => p.id !== id),
       clients: state.clients.filter((c) => c.id !== pipeline.client_id),
       selectedPipelineId: null,
+      activityLogs: [{ id: `l${Date.now()}`, client_name: clientName, action: "deleted", created_at: new Date().toISOString() }, ...state.activityLogs],
     }));
 
     if (api.isSupabaseConfigured()) {
       try {
-        await api.deletePipeline(id, pipeline.client_id);
+        await api.deletePipeline(id, pipeline.client_id, clientName);
+        get().fetchData();
       } catch (e) {
         set({ error: (e as Error).message });
         get().fetchData();
