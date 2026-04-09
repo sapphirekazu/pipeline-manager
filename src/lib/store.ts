@@ -41,6 +41,7 @@ interface PipelineStore {
   ) => Promise<void>;
   advanceToHandedOver: (id: string) => Promise<void>;
   advanceToActive: (id: string) => Promise<void>;
+  deletePipeline: (id: string) => Promise<void>;
 }
 
 export const usePipelineStore = create<PipelineStore>((set, get) => ({
@@ -207,6 +208,26 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
     if (api.isSupabaseConfigured()) {
       try {
         await api.advanceStatus(id, "active", "activated_at");
+      } catch (e) {
+        set({ error: (e as Error).message });
+        get().fetchData();
+      }
+    }
+  },
+
+  deletePipeline: async (id) => {
+    const pipeline = get().pipelines.find((p) => p.id === id);
+    if (!pipeline) return;
+
+    set((state) => ({
+      pipelines: state.pipelines.filter((p) => p.id !== id),
+      clients: state.clients.filter((c) => c.id !== pipeline.client_id),
+      selectedPipelineId: null,
+    }));
+
+    if (api.isSupabaseConfigured()) {
+      try {
+        await api.deletePipeline(id, pipeline.client_id);
       } catch (e) {
         set({ error: (e as Error).message });
         get().fetchData();

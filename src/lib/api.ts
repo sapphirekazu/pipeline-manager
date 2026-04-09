@@ -115,6 +115,25 @@ export async function updatePipelineFields(
 }
 
 // ============================================
+// パイプライン + クライアント削除
+// ============================================
+export async function deletePipeline(pipelineId: string, clientId: string) {
+  // パイプライン削除（CASCADE でpayment_recordsも消える）
+  const { error: pErr } = await db()
+    .from("sales_pipelines")
+    .delete()
+    .eq("id", pipelineId);
+  if (pErr) throw pErr;
+
+  // クライアント削除
+  const { error: cErr } = await db()
+    .from("clients")
+    .delete()
+    .eq("id", clientId);
+  if (cErr) throw cErr;
+}
+
+// ============================================
 // ステータス遷移
 // ============================================
 export async function advanceStatus(

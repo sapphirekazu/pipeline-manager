@@ -25,6 +25,7 @@ import {
   AlertTriangle,
   ArrowRight,
   Banknote,
+  Trash2,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -38,6 +39,7 @@ export function ClientDetailSheet() {
     setDealResult,
     advanceToHandedOver,
     advanceToActive,
+    deletePipeline,
   } = usePipelineStore();
 
   const pipeline = pipelines.find((p) => p.id === selectedPipelineId);
@@ -48,6 +50,7 @@ export function ClientDetailSheet() {
   const [dealPaymentType, setDealPaymentType] = useState<PaymentType>("bank_transfer");
   const [dealTotal, setDealTotal] = useState("500000");
   const [dealPaid, setDealPaid] = useState("500000");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   if (!pipeline || !client) {
     return null;
@@ -373,6 +376,46 @@ export function ClientDetailSheet() {
               </section>
             </>
           )}
+
+          {/* 削除 */}
+          <Separator />
+          <section>
+            {!showDeleteConfirm ? (
+              <Button
+                variant="ghost"
+                className="w-full text-red-500 hover:text-red-700 hover:bg-red-50"
+                onClick={() => setShowDeleteConfirm(true)}
+              >
+                <Trash2 className="w-4 h-4 mr-1" />
+                この顧客を削除する
+              </Button>
+            ) : (
+              <div className="bg-red-50 rounded-lg p-3 space-y-2">
+                <p className="text-sm text-red-700 font-medium">
+                  「{client.name}」を削除しますか？この操作は元に戻せません。
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="destructive"
+                    className="flex-1"
+                    onClick={() => {
+                      deletePipeline(pipeline.id);
+                      setShowDeleteConfirm(false);
+                    }}
+                  >
+                    削除する
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setShowDeleteConfirm(false)}
+                  >
+                    キャンセル
+                  </Button>
+                </div>
+              </div>
+            )}
+          </section>
         </div>
       </SheetContent>
     </Sheet>
