@@ -12,11 +12,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { usePipelineStore } from "@/lib/store";
 import {
   PAYMENT_TYPE_LABELS,
   STATUS_LABELS,
   PaymentType,
+  PipelineStatus,
+  KANBAN_COLUMNS,
 } from "@/types/pipeline";
 import {
   Mail,
@@ -26,8 +29,11 @@ import {
   ArrowRight,
   Banknote,
   Trash2,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export function ClientDetailSheet() {
   const {
@@ -40,6 +46,9 @@ export function ClientDetailSheet() {
     advanceToHandedOver,
     advanceToActive,
     deletePipeline,
+    updateClientInfo,
+    updatePayment,
+    changeStatus,
   } = usePipelineStore();
 
   const pipeline = pipelines.find((p) => p.id === selectedPipelineId);
@@ -47,10 +56,42 @@ export function ClientDetailSheet() {
     ? clients.find((c) => c.id === pipeline.client_id)
     : null;
 
+  // 商談結果入力（lead時）
   const [dealPaymentType, setDealPaymentType] = useState<PaymentType>("bank_transfer");
   const [dealTotal, setDealTotal] = useState("500000");
   const [dealPaid, setDealPaid] = useState("500000");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // 基本情報編集
+  const [editingClient, setEditingClient] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+
+  // 金銭情報編集
+  const [editingPayment, setEditingPayment] = useState(false);
+  const [editPaymentType, setEditPaymentType] = useState<PaymentType>("bank_transfer");
+  const [editTotal, setEditTotal] = useState("");
+  const [editPaid, setEditPaid] = useState("");
+  const [editPaymentNotes, setEditPaymentNotes] = useState("");
+
+  // 顧客切り替え時に編集状態をリセット
+  useEffect(() => {
+    setEditingClient(false);
+    setEditingPayment(false);
+    setShowDeleteConfirm(false);
+    if (client) {
+      setEditName(client.name);
+      setEditEmail(client.email);
+      setEditPhone(client.phone ?? "");
+    }
+    if (pipeline) {
+      setEditPaymentType(pipeline.payment_type ?? "bank_transfer");
+      setEditTotal(String(pipeline.total_amount));
+      setEditPaid(String(pipeline.paid_amount));
+      setEditPaymentNotes(pipeline.payment_notes ?? "");
+    }
+  }, [selectedPipelineId, client, pipeline]);
 
   if (!pipeline || !client) {
     return null;
@@ -70,6 +111,25 @@ export function ClientDetailSheet() {
     });
   };
 
+  const handleSaveClient = () => {
+    updateClientInfo(client.id, {
+      name: editName,
+      email: editEmail,
+      phone: editPhone || undefined,
+    });
+    setEditingClient(false);
+  };
+
+  const handleSavePayment = () => {
+    updatePayment(pipeline.id, {
+      payment_type: editPaymentType,
+      total_amount: parseInt(editTotal) || 0,
+      paid_amount: parseInt(editPaid) || 0,
+      payment_notes: editPaymentNotes || undefined,
+    });
+    setEditingPayment(false);
+  };
+
   const canAdvanceToHandedOver =
     pipeline.status === "won" && pipeline.is_chatwork_connected;
 
@@ -77,6 +137,11 @@ export function ClientDetailSheet() {
     pipeline.status === "onboarding" &&
     pipeline.is_membership_invited &&
     pipeline.is_utage_account_issued;
+
+  const allStatuses: PipelineStatus[] = [
+    ...KANBAN_COLUMNS.map((c) => c.id),
+    "lost",
+  ];
 
   return (
     <Sheet
@@ -104,44 +169,131 @@ export function ClientDetailSheet() {
         </SheetHeader>
 
         <div className="px-4 pb-4 space-y-6">
+          {/* ステータス変更 */}
+          <section>
+            <h3 className="text-sm font-semibold text-muted-foreground mb-2">
+              ステータス
+            </h3>
+            <div className="flex flex-wrap gap-1">
+              {allStatuses.map((status) => (
+                <Button
+                  key={status}
+                  size="sm"
+                  variant={pipeline.status === status ? "default" : "outline"}
+                  className="text-xs h-7"
+                  onClick={() => {
+                    if (pipeline.status !== status) {
+                      changeStatus(pipeline.id, status);
+                    }
+                  }}
+                >
+                  {STATUS_LABELS[status]}
+                </Button>
+              ))}
+            </div>
+          </section>
+
+          <Separator />
+
           {/* 基本情報 */}
           <section>
-            <h3 className="text-sm font-semibold text-muted-foreground mb-3">
-              基本情報（Utage発行用）
-            </h3>
-            <div className="space-y-2 bg-muted/50 rounded-lg p-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm font-mono">{client.email}</span>
-                </div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-muted-foreground">
+                基本情報（Utage発行用）
+              </h3>
+              {!editingClient ? (
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => handleCopy(client.email)}
+                  className="h-7 text-xs"
+                  onClick={() => setEditingClient(true)}
                 >
-                  <Copy className="w-3 h-3" />
+                  <Pencil className="w-3 h-3 mr-1" />
+                  編集
                 </Button>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">名前: {client.name}</span>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleCopy(client.name)}
-                >
-                  <Copy className="w-3 h-3" />
-                </Button>
-              </div>
-              {client.phone && (
-                <div className="flex items-center gap-2">
-                  <Phone className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm">{client.phone}</span>
+              ) : (
+                <div className="flex gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs text-green-600"
+                    onClick={handleSaveClient}
+                  >
+                    <Check className="w-3 h-3 mr-1" />
+                    保存
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setEditingClient(false)}
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
                 </div>
               )}
             </div>
+
+            {!editingClient ? (
+              <div className="space-y-2 bg-muted/50 rounded-lg p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Mail className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <span className="text-sm font-mono truncate">{client.email}</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleCopy(client.email)}
+                  >
+                    <Copy className="w-3 h-3" />
+                  </Button>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">名前: {client.name}</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleCopy(client.name)}
+                  >
+                    <Copy className="w-3 h-3" />
+                  </Button>
+                </div>
+                {client.phone && (
+                  <div className="flex items-center gap-2">
+                    <Phone className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm">{client.phone}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2 bg-muted/50 rounded-lg p-3">
+                <div>
+                  <Label className="text-xs">名前</Label>
+                  <Input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">メールアドレス</Label>
+                  <Input
+                    type="email"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">電話番号</Label>
+                  <Input
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
           </section>
 
           <Separator />
@@ -206,48 +358,135 @@ export function ClientDetailSheet() {
           )}
 
           {/* 金銭状況 */}
-          {pipeline.payment_type && (
+          {(pipeline.payment_type || pipeline.status !== "lead") && (
             <section>
-              <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-1">
-                <Banknote className="w-4 h-4" />
-                金銭状況
-              </h3>
-              <div className="bg-muted/50 rounded-lg p-3 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>支払い方法</span>
-                  <Badge variant="outline">
-                    {PAYMENT_TYPE_LABELS[pipeline.payment_type]}
-                  </Badge>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span>総額</span>
-                  <span className="font-semibold">
-                    ¥{pipeline.total_amount.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span>支払済み</span>
-                  <span className="text-green-600 font-semibold">
-                    ¥{pipeline.paid_amount.toLocaleString()}
-                  </span>
-                </div>
-                {pipeline.remaining_amount > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="flex items-center gap-1 text-amber-600">
-                      <AlertTriangle className="w-3 h-3" />
-                      残金
-                    </span>
-                    <span className="text-amber-600 font-bold">
-                      ¥{pipeline.remaining_amount.toLocaleString()}
-                    </span>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-muted-foreground flex items-center gap-1">
+                  <Banknote className="w-4 h-4" />
+                  金銭状況
+                </h3>
+                {!editingPayment ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setEditingPayment(true)}
+                  >
+                    <Pencil className="w-3 h-3 mr-1" />
+                    編集
+                  </Button>
+                ) : (
+                  <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-green-600"
+                      onClick={handleSavePayment}
+                    >
+                      <Check className="w-3 h-3 mr-1" />
+                      保存
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => setEditingPayment(false)}
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
                   </div>
                 )}
-                {pipeline.payment_notes && (
-                  <p className="text-xs text-muted-foreground mt-1 bg-white p-2 rounded">
-                    {pipeline.payment_notes}
-                  </p>
-                )}
               </div>
+
+              {!editingPayment ? (
+                <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+                  {pipeline.payment_type && (
+                    <div className="flex justify-between text-sm">
+                      <span>支払い方法</span>
+                      <Badge variant="outline">
+                        {PAYMENT_TYPE_LABELS[pipeline.payment_type]}
+                      </Badge>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm">
+                    <span>総額</span>
+                    <span className="font-semibold">
+                      ¥{pipeline.total_amount.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span>支払済み</span>
+                    <span className="text-green-600 font-semibold">
+                      ¥{pipeline.paid_amount.toLocaleString()}
+                    </span>
+                  </div>
+                  {pipeline.remaining_amount > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="flex items-center gap-1 text-amber-600">
+                        <AlertTriangle className="w-3 h-3" />
+                        残金
+                      </span>
+                      <span className="text-amber-600 font-bold">
+                        ¥{pipeline.remaining_amount.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                  {pipeline.payment_notes && (
+                    <p className="text-xs text-muted-foreground mt-1 bg-white p-2 rounded">
+                      {pipeline.payment_notes}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+                  <div>
+                    <Label className="text-xs">支払い方法</Label>
+                    <div className="flex gap-1 mt-1">
+                      {(["bank_transfer", "credit_card", "partial"] as PaymentType[]).map(
+                        (type) => (
+                          <Button
+                            key={type}
+                            type="button"
+                            variant={editPaymentType === type ? "default" : "outline"}
+                            size="sm"
+                            className="text-xs"
+                            onClick={() => setEditPaymentType(type)}
+                          >
+                            {PAYMENT_TYPE_LABELS[type]}
+                          </Button>
+                        )
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">総額（円）</Label>
+                      <Input
+                        type="number"
+                        value={editTotal}
+                        onChange={(e) => setEditTotal(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">支払済み（円）</Label>
+                      <Input
+                        type="number"
+                        value={editPaid}
+                        onChange={(e) => setEditPaid(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">支払いメモ</Label>
+                    <Textarea
+                      value={editPaymentNotes}
+                      onChange={(e) => setEditPaymentNotes(e.target.value)}
+                      rows={2}
+                      placeholder="分割予定など..."
+                    />
+                  </div>
+                </div>
+              )}
             </section>
           )}
 
@@ -267,7 +506,6 @@ export function ClientDetailSheet() {
                     is_chatwork_connected: checked,
                   })
                 }
-                disabled={pipeline.status === "lead" || pipeline.status === "active"}
               />
             </div>
             {pipeline.status === "won" && (
@@ -309,11 +547,6 @@ export function ClientDetailSheet() {
                         : pipeline.status,
                   })
                 }
-                disabled={
-                  pipeline.status === "lead" ||
-                  pipeline.status === "won" ||
-                  pipeline.status === "active"
-                }
               />
               <ChecklistItem
                 checked={pipeline.is_utage_account_issued}
@@ -322,11 +555,6 @@ export function ClientDetailSheet() {
                   updatePipelineField(pipeline.id, {
                     is_utage_account_issued: checked,
                   })
-                }
-                disabled={
-                  pipeline.status === "lead" ||
-                  pipeline.status === "won" ||
-                  pipeline.status === "active"
                 }
               />
             </div>
@@ -426,24 +654,21 @@ function ChecklistItem({
   checked,
   label,
   onChange,
-  disabled,
 }: {
   checked: boolean;
   label: string;
   onChange: (checked: boolean) => void;
-  disabled: boolean;
 }) {
   return (
     <label className="flex items-center gap-2 cursor-pointer">
       <Checkbox
         checked={checked}
         onCheckedChange={(v) => onChange(v === true)}
-        disabled={disabled}
       />
       <span
         className={`text-sm ${
           checked ? "line-through text-muted-foreground" : ""
-        } ${disabled ? "opacity-50" : ""}`}
+        }`}
       >
         {label}
       </span>

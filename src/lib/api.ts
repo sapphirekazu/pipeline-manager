@@ -140,6 +140,27 @@ export async function setDealResult(
 }
 
 // ============================================
+// クライアント情報の更新（名前/メール/電話/備考）
+// ============================================
+export async function updateClient(
+  clientId: string,
+  oldName: string,
+  updates: Partial<Pick<Client, "name" | "email" | "phone" | "notes">>
+) {
+  const { error } = await db()
+    .from("clients")
+    .update(updates)
+    .eq("id", clientId);
+  if (error) throw error;
+
+  const newName = updates.name ?? oldName;
+  const detail = Object.entries(updates)
+    .map(([k, v]) => `${k}: ${v ?? "（空）"}`)
+    .join(", ");
+  await addLog(newName, "updated", undefined, detail);
+}
+
+// ============================================
 // パイプラインフィールド更新（チェックリスト等）
 // ============================================
 export async function updatePipelineFields(
@@ -167,6 +188,64 @@ export async function updatePipelineFields(
   if (updates.status && !updates.is_membership_invited && !updates.is_chatwork_connected && !updates.is_utage_account_issued) {
     await addLog(clientName, updates.status, pipelineId);
   }
+}
+
+// ============================================
+// 金銭情報の更新
+// ============================================
+export async function updatePayment(
+  pipelineId: string,
+  clientName: string,
+  payment: {
+    payment_type?: PaymentType;
+    total_amount?: number;
+    paid_amount?: number;
+    payment_notes?: string;
+  }
+) {
+  const total = payment.total_amount ?? 0;
+  const paid = payment.paid_amount ?? 0;
+
+  const { error } = await db()
+    .from("sales_pipelines")
+    .update({
+      payment_type: payment.payment_type,
+      total_amount: total,
+      paid_amount: paid,
+      remaining_amount: total - paid,
+      payment_notes: payment.payment_notes,
+    })
+    .eq("id", pipelineId);
+  if (error) throw error;
+
+  await addLog(
+    clientName,
+    "updated",
+    pipelineId,
+    `金銭情報更新: 総額¥${total.toLocaleString()} / 支払済¥${paid.toLocaleString()}`
+  );
+}
+
+// ============================================
+// ステータスを直接変更
+// ============================================
+export async function changeStatus(
+  pipelineId: string,
+  clientName: string,
+  newStatus: PipelineStatus
+) {
+  const updates: Record<string, unknown> = { status: newStatus };
+  if (newStatus === "won") updates.won_at = new Date().toISOString();
+  if (newStatus === "handed_over") updates.handed_over_at = new Date().toISOString();
+  if (newStatus === "active") updates.activated_at = new Date().toISOString();
+
+  const { error } = await db()
+    .from("sales_pipelines")
+    .update(updates)
+    .eq("id", pipelineId);
+  if (error) throw error;
+
+  await addLog(clientName, newStatus, pipelineId);
 }
 
 // ============================================

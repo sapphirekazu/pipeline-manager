@@ -41,6 +41,20 @@ interface PipelineStore {
   advanceToHandedOver: (id: string) => Promise<void>;
   advanceToActive: (id: string) => Promise<void>;
   deletePipeline: (id: string) => Promise<void>;
+  updateClientInfo: (
+    clientId: string,
+    updates: Partial<Pick<Client, "name" | "email" | "phone" | "notes">>
+  ) => Promise<void>;
+  updatePayment: (
+    id: string,
+    payment: {
+      payment_type?: PaymentType;
+      total_amount?: number;
+      paid_amount?: number;
+      payment_notes?: string;
+    }
+  ) => Promise<void>;
+  changeStatus: (id: string, newStatus: PipelineStatus) => Promise<void>;
 }
 
 function getClientName(state: PipelineStore, pipelineId: string): string {
@@ -191,6 +205,85 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
     if (api.isSupabaseConfigured()) {
       try {
         await api.advanceStatus(id, clientName, "active", "activated_at");
+        get().fetchData();
+      } catch (e) {
+        set({ error: (e as Error).message });
+        get().fetchData();
+      }
+    }
+  },
+
+  updateClientInfo: async (clientId, updates) => {
+    const oldClient = get().clients.find((c) => c.id === clientId);
+    if (!oldClient) return;
+
+    set((state) => ({
+      clients: state.clients.map((c) =>
+        c.id === clientId ? { ...c, ...updates, updated_at: new Date().toISOString() } : c
+      ),
+    }));
+
+    if (api.isSupabaseConfigured()) {
+      try {
+        await api.updateClient(clientId, oldClient.name, updates);
+        get().fetchData();
+      } catch (e) {
+        set({ error: (e as Error).message });
+        get().fetchData();
+      }
+    }
+  },
+
+  updatePayment: async (id, payment) => {
+    const clientName = getClientName(get(), id);
+    const total = payment.total_amount ?? 0;
+    const paid = payment.paid_amount ?? 0;
+
+    set((state) => ({
+      pipelines: state.pipelines.map((p) =>
+        p.id === id
+          ? {
+              ...p,
+              payment_type: payment.payment_type,
+              total_amount: total,
+              paid_amount: paid,
+              remaining_amount: total - paid,
+              payment_notes: payment.payment_notes,
+              updated_at: new Date().toISOString(),
+            }
+          : p
+      ),
+    }));
+
+    if (api.isSupabaseConfigured()) {
+      try {
+        await api.updatePayment(id, clientName, payment);
+        get().fetchData();
+      } catch (e) {
+        set({ error: (e as Error).message });
+        get().fetchData();
+      }
+    }
+  },
+
+  changeStatus: async (id, newStatus) => {
+    const clientName = getClientName(get(), id);
+    const now = new Date().toISOString();
+
+    set((state) => ({
+      pipelines: state.pipelines.map((p) => {
+        if (p.id !== id) return p;
+        const updates: Partial<SalesPipeline> = { status: newStatus, updated_at: now };
+        if (newStatus === "won" && !p.won_at) updates.won_at = now;
+        if (newStatus === "handed_over" && !p.handed_over_at) updates.handed_over_at = now;
+        if (newStatus === "active" && !p.activated_at) updates.activated_at = now;
+        return { ...p, ...updates };
+      }),
+    }));
+
+    if (api.isSupabaseConfigured()) {
+      try {
+        await api.changeStatus(id, clientName, newStatus);
         get().fetchData();
       } catch (e) {
         set({ error: (e as Error).message });
