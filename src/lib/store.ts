@@ -8,6 +8,7 @@ import {
 } from "@/types/pipeline";
 import { mockClients, mockPipelines } from "@/lib/mock-data";
 import * as api from "@/lib/api";
+import { notifyStatusChange, notifyNewClient } from "@/lib/notify";
 
 interface PipelineStore {
   clients: Client[];
@@ -118,6 +119,7 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
         clients: [...state.clients, client],
         pipelines: [...state.pipelines, { ...pipeline, client }],
       }));
+      notifyNewClient(data.name, data.email);
       get().fetchData(); // ログも含めて再取得
     } catch (e) {
       set({ error: (e as Error).message });
@@ -145,6 +147,7 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
 
   setDealResult: async (id, result, paymentInfo) => {
     const clientName = getClientName(get(), id);
+    const oldStatus = get().pipelines.find((p) => p.id === id)?.status ?? "lead";
     const now = new Date().toISOString();
 
     set((state) => ({
@@ -162,6 +165,11 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
       }),
     }));
 
+    const detail = result === "won" && paymentInfo
+      ? `💰 ${paymentInfo.total_amount ? `総額¥${paymentInfo.total_amount.toLocaleString()}` : ""}${paymentInfo.paid_amount ? ` / 支払済¥${paymentInfo.paid_amount.toLocaleString()}` : ""}`
+      : undefined;
+    notifyStatusChange(clientName, oldStatus, result === "won" ? "won" : "lost", detail);
+
     if (api.isSupabaseConfigured()) {
       try {
         await api.setDealResult(id, clientName, result, paymentInfo);
@@ -175,12 +183,14 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
 
   advanceToHandedOver: async (id) => {
     const clientName = getClientName(get(), id);
+    const oldStatus = get().pipelines.find((p) => p.id === id)?.status ?? "won";
     const now = new Date().toISOString();
     set((state) => ({
       pipelines: state.pipelines.map((p) =>
         p.id === id ? { ...p, status: "handed_over" as const, handed_over_at: now, updated_at: now } : p
       ),
     }));
+    notifyStatusChange(clientName, oldStatus, "handed_over");
 
     if (api.isSupabaseConfigured()) {
       try {
@@ -195,12 +205,14 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
 
   advanceToActive: async (id) => {
     const clientName = getClientName(get(), id);
+    const oldStatus = get().pipelines.find((p) => p.id === id)?.status ?? "onboarding";
     const now = new Date().toISOString();
     set((state) => ({
       pipelines: state.pipelines.map((p) =>
         p.id === id ? { ...p, status: "active" as const, activated_at: now, updated_at: now } : p
       ),
     }));
+    notifyStatusChange(clientName, oldStatus, "active");
 
     if (api.isSupabaseConfigured()) {
       try {
@@ -268,7 +280,10 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
 
   changeStatus: async (id, newStatus) => {
     const clientName = getClientName(get(), id);
+    const oldStatus = get().pipelines.find((p) => p.id === id)?.status;
     const now = new Date().toISOString();
+
+    if (oldStatus === newStatus) return;
 
     set((state) => ({
       pipelines: state.pipelines.map((p) => {
@@ -280,6 +295,8 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
         return { ...p, ...updates };
       }),
     }));
+
+    if (oldStatus) notifyStatusChange(clientName, oldStatus, newStatus);
 
     if (api.isSupabaseConfigured()) {
       try {
