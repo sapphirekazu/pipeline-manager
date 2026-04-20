@@ -67,6 +67,7 @@ export function ClientDetailSheet() {
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editPhone, setEditPhone] = useState("");
+  const [editSalesRep, setEditSalesRep] = useState("");
 
   // 金銭情報編集
   const [editingPayment, setEditingPayment] = useState(false);
@@ -86,6 +87,7 @@ export function ClientDetailSheet() {
       setEditPhone(client.phone ?? "");
     }
     if (pipeline) {
+      setEditSalesRep(pipeline.sales_rep ?? "");
       setEditPaymentType(pipeline.payment_type ?? "bank_transfer");
       setEditTotal(String(pipeline.total_amount));
       setEditPaid(String(pipeline.paid_amount));
@@ -116,6 +118,9 @@ export function ClientDetailSheet() {
       name: editName,
       email: editEmail,
       phone: editPhone || undefined,
+    });
+    updatePipelineField(pipeline.id, {
+      sales_rep: editSalesRep || undefined,
     });
     setEditingClient(false);
   };
@@ -267,6 +272,12 @@ export function ClientDetailSheet() {
                     <span className="text-sm">{client.phone}</span>
                   </div>
                 )}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">営業担当:</span>
+                  <span className="text-sm font-medium">
+                    {pipeline.sales_rep || "未設定"}
+                  </span>
+                </div>
               </div>
             ) : (
               <div className="space-y-2 bg-muted/50 rounded-lg p-3">
@@ -290,6 +301,14 @@ export function ClientDetailSheet() {
                   <Input
                     value={editPhone}
                     onChange={(e) => setEditPhone(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">営業担当者</Label>
+                  <Input
+                    value={editSalesRep}
+                    onChange={(e) => setEditSalesRep(e.target.value)}
+                    placeholder="担当者名"
                   />
                 </div>
               </div>
