@@ -305,6 +305,12 @@ export function ClientDetailSheet() {
                 商談結果を入力
               </h3>
               <div className="space-y-3 bg-blue-50 rounded-lg p-3">
+                {pipeline.sales_rep && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">営業担当:</span>
+                    <Badge variant="outline">{pipeline.sales_rep}</Badge>
+                  </div>
+                )}
                 <div>
                   <Label className="text-xs">支払い方法</Label>
                   <div className="flex gap-1 mt-1">
