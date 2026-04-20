@@ -18,6 +18,7 @@ import { Plus } from "lucide-react";
 export function AddClientDialog() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
+  const [salesRep, setSalesRep] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
@@ -32,9 +33,11 @@ export function AddClientDialog() {
       email,
       phone: phone || undefined,
       notes: notes || undefined,
+      sales_rep: salesRep || undefined,
     });
 
     setName("");
+    setSalesRep("");
     setEmail("");
     setPhone("");
     setNotes("");
@@ -57,13 +60,22 @@ export function AddClientDialog() {
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
           <div>
-            <Label htmlFor="name">名前 *</Label>
+            <Label htmlFor="name">ご本人様の名前 *</Label>
             <Input
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="山田 太郎"
               required
+            />
+          </div>
+          <div>
+            <Label htmlFor="salesRep">営業担当者</Label>
+            <Input
+              id="salesRep"
+              value={salesRep}
+              onChange={(e) => setSalesRep(e.target.value)}
+              placeholder="担当者名"
             />
           </div>
           <div>

@@ -75,6 +75,7 @@ export async function createClientWithPipeline(input: {
   email: string;
   phone?: string;
   notes?: string;
+  sales_rep?: string;
 }): Promise<{ client: Client; pipeline: SalesPipeline }> {
   const { data: client, error: clientErr } = await db()
     .from("clients")
@@ -84,9 +85,12 @@ export async function createClientWithPipeline(input: {
 
   if (clientErr || !client) throw clientErr ?? new Error("Client creation failed");
 
+  const pipelineInsert: Record<string, unknown> = { client_id: client.id };
+  if (input.sales_rep) pipelineInsert.sales_rep = input.sales_rep;
+
   const { data: pipeline, error: pipelineErr } = await db()
     .from("sales_pipelines")
-    .insert({ client_id: client.id })
+    .insert(pipelineInsert)
     .select()
     .single();
 

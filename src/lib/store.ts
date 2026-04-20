@@ -25,6 +25,7 @@ interface PipelineStore {
     email: string;
     phone?: string;
     notes?: string;
+    sales_rep?: string;
   }) => Promise<void>;
   updatePipelineField: (
     id: string,
@@ -103,6 +104,7 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
         id: pipelineId, client_id: clientId, status: "lead",
         total_amount: 0, paid_amount: 0, remaining_amount: 0,
         is_chatwork_connected: false, is_membership_invited: false, is_utage_account_issued: false,
+        sales_rep: data.sales_rep,
         created_at: now, updated_at: now,
       };
       set((state) => ({
